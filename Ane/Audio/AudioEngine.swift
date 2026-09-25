@@ -110,7 +110,47 @@ final class AudioEngine: BeatClock {
             guard let file = loadFile(named: kind.fileName) else { return nil }
             loaded[kind] = file
         }
+        validate(loaded)
         return loaded
+    }
+
+    /// Checks that the stems really are the one song cut four ways.
+    ///
+    /// They are scheduled on a single shared start time and never resynchronised, so a
+    /// stem that is a different length or a different sample rate simply drifts out of the
+    /// arrangement. Without this the failure is silent: the song still plays, the clock is
+    /// still correct, and one layer is quietly wrong for the whole run.
+    private func validate(_ loaded: [StemKind: AVAudioFile]) {
+        guard let reference = loaded[.drums] else { return }
+        let referenceRate = reference.processingFormat.sampleRate
+        let referenceDuration = duration(of: reference)
+
+        // A tenth of a beat at 120 BPM. Anything larger is audible as a flam.
+        let tolerance = 0.05
+
+        for kind in StemKind.allCases where kind != .drums {
+            guard let file = loaded[kind] else { continue }
+
+            let rate = file.processingFormat.sampleRate
+            if rate != referenceRate {
+                logger.error("""
+                    stem \(kind.rawValue, privacy: .public) is \(rate, privacy: .public) Hz                     but drums is \(referenceRate, privacy: .public) Hz
+                    """)
+            }
+
+            let delta = duration(of: file) - referenceDuration
+            if abs(delta) > tolerance {
+                logger.error("""
+                    stem \(kind.rawValue, privacy: .public) is \(delta, privacy: .public) s                     longer than drums; stems must be the same length and aligned at sample 0
+                    """)
+            }
+        }
+    }
+
+    private func duration(of file: AVAudioFile) -> Double {
+        let rate = file.processingFormat.sampleRate
+        guard rate > 0 else { return 0 }
+        return Double(file.length) / rate
     }
 
     private func loadFile(named name: String) -> AVAudioFile? {

@@ -81,10 +81,21 @@ would have required a second clock implementation that the tested one could not 
 Synthesised buffers keep **exactly one** clock path whether the stems are generated or
 loaded from disk.
 
-To swap in real music, drop `drums.m4a`, `bass.m4a`, `synth.m4a` and `lead.m4a` into the
-app target. `AudioEngine` detects them and uses them with no code change. A single mixed
-`song.m4a` also works and switches the game to `FilterLayering`, where a low-pass opens up
-with the combo instead.
+To swap in real music, check the files first, then drop them into the app target:
+
+```bash
+swift Tools/check-stems.swift drums.m4a bass.m4a synth.m4a lead.m4a
+```
+
+`AudioEngine` detects them and uses them with no code change. A single mixed `song.m4a`
+also works and switches the game to `FilterLayering`, where a low-pass opens up with the
+combo instead.
+
+The stems are scheduled on one shared start time and are **never resynchronised**, so they
+have to be the same song cut four ways: identical length, identical sample rate, downbeat
+on sample 0, no fades. A stem that is a little short does not fail loudly — it just drifts
+out of the arrangement while the clock stays perfectly correct. `check-stems.swift` catches
+that on the desk, and `AudioEngine.validate(_:)` logs it at launch if anything slips past.
 
 ## Known limits
 
