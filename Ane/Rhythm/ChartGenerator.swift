@@ -40,6 +40,12 @@ public struct ChartGenerator {
         public var outroBeats: Int = 4
         /// Hard cap on how many times one target may be asked for consecutively.
         public var maxTargetRun: Int = 2
+        /// Note density for each phrase of the song, in order. When set, it replaces the
+        /// fixed warm-up-then-every-beat shape, so a chart can breathe with its track:
+        /// quiet in the intro, busy in the drop, empty in a breakdown.
+        public var sections: [Density]?
+        /// Length of one entry in `sections`, in beats. 16 is four bars of 4/4.
+        public var phraseBeats: Int = 16
 
         public init() {}
     }
@@ -62,8 +68,7 @@ public struct ChartGenerator {
         var previousTarget = -1
         var runLength = 0
 
-        var beat = config.leadInBeats
-        while beat <= lastNoteBeat {
+        func place(at beat: Int) {
             let target = pickTarget(
                 avoiding: previousTarget,
                 runLength: runLength,
@@ -80,18 +85,45 @@ public struct ChartGenerator {
                 previousTarget = target
                 runLength = 1
             }
-
-            // Sparse while the player finds the controls, then one note per beat.
-            beat += beat < warmUpEnd ? config.warmUpStride : 1
         }
 
-        return Chart(
+        if let sections = config.sections, !sections.isEmpty {
+            // Follow the track: each phrase sets its own density.
+            guard config.leadInBeats <= lastNoteBeat else {
+                return makeChart(notes: notes)
+            }
+            for beat in config.leadInBeats...lastNoteBeat {
+                if density(at: beat, in: sections).includes(beat: beat) {
+                    place(at: beat)
+                }
+            }
+        } else {
+            var beat = config.leadInBeats
+            while beat <= lastNoteBeat {
+                place(at: beat)
+                // Sparse while the player finds the controls, then one note per beat.
+                beat += beat < warmUpEnd ? config.warmUpStride : 1
+            }
+        }
+
+        return makeChart(notes: notes)
+    }
+
+    private func makeChart(notes: [Note]) -> Chart {
+        Chart(
             bpm: config.bpm,
             firstBeatOffset: config.firstBeatOffset,
             totalBeats: config.totalBeats,
             notes: notes,
             layout: layout
         )
+    }
+
+    /// The density governing `beat`. Beats past the last listed phrase keep its density,
+    /// so a section list that is a little short never silently drops the ending.
+    private func density(at beat: Int, in sections: [Density]) -> Density {
+        let phrase = beat / max(config.phraseBeats, 1)
+        return sections[min(phrase, sections.count - 1)]
     }
 
     /// Picks a target, refusing to extend a run past `maxTargetRun`.

@@ -13,15 +13,17 @@ struct PrismGrooveApp: App {
         WindowGroup {
             RootView(appState: appState, haptics: haptics)
                 .preferredColorScheme(.dark)
-                .statusBarHidden()
-                .persistentSystemOverlays(.hidden)
+                // One typeface voice for the whole app. Every size below is a text style,
+                // so the menus follow the reader's Dynamic Type setting.
+                .fontDesign(.rounded)
+                .tint(Theme.accent)
         }
     }
 }
 
 struct RootView: View {
 
-    let appState: AppState
+    @Bindable var appState: AppState
     let haptics: Haptics
 
     var body: some View {
@@ -29,14 +31,29 @@ struct RootView: View {
             Theme.background.ignoresSafeArea()
 
             switch appState.screen {
-            case .title:
-                TitleView(appState: appState)
+            case .menu:
+                NavigationStack(path: $appState.menuPath) {
+                    TitleView(appState: appState)
+                        .navigationDestination(for: AppState.MenuRoute.self) { route in
+                            switch route {
+                            case .songs:
+                                SongSelectView(appState: appState)
+                            }
+                        }
+                }
+                .statusBarHidden(false)
+                .transition(.opacity)
+
+            case let .playing(song, run):
+                GameView(appState: appState, haptics: haptics, song: song)
+                    .id(run)
                     .transition(.opacity)
-            case .playing:
-                GameView(appState: appState, haptics: haptics)
-                    .transition(.opacity)
-            case let .results(result):
-                ResultsView(appState: appState, result: result)
+                    // The playfield is edge to edge; system chrome only gets in the way.
+                    .statusBarHidden()
+                    .persistentSystemOverlays(.hidden)
+
+            case let .results(result, song):
+                ResultsView(appState: appState, result: result, song: song)
                     .transition(.opacity)
             }
         }
@@ -46,4 +63,6 @@ struct RootView: View {
 
 #Preview {
     RootView(appState: AppState(defaults: .previewDefaults), haptics: Haptics())
+        .fontDesign(.rounded)
+        .preferredColorScheme(.dark)
 }

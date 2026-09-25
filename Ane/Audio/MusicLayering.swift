@@ -124,25 +124,34 @@ final class StemLayering: MusicLayering {
     }
 }
 
-/// Fallback for a single mixed track: a low-pass that opens up with the combo.
+/// For a single mixed track: a miss muffles the song, and a streak of hits opens it back up.
 ///
 /// Less expressive than stems -- it cannot tell the player *which* colour they are
 /// losing -- but it still ties the sound to the performance, and it needs only one file.
+///
+/// The song starts fully open. Starting closed and opening with the combo made every
+/// run begin with half a minute of muffled intro, because intros are charted sparsely
+/// and the combo there climbs one note a bar. First impressions of a real track matter
+/// more than that symmetry.
 final class FilterLayering: MusicLayering {
 
-    static let closedCutoff = 400.0
+    /// Where one miss drops the cutoff. Muffled, but the melody is still recognisable, so
+    /// the player can hear what they are about to win back.
+    static let closedCutoff = 700.0
     static let openCutoff = 20_000.0
-    /// Combo at which the filter is fully open.
-    static let fullyOpenCombo = 16.0
+    /// Hits in a row, after a miss, that fully reopen the filter.
+    static let fullyOpenCombo = 6.0
 
     private let lowPass: AVAudioUnitEQ
-    private var cutoff = SmoothedValue(FilterLayering.closedCutoff, duration: 0.15)
+    private var cutoff = SmoothedValue(FilterLayering.openCutoff, duration: 0.15)
+    /// Until the first miss the combo has nothing to recover from.
+    private var isRecovering = false
 
     init(lowPass: AVAudioUnitEQ) {
         self.lowPass = lowPass
         let band = lowPass.bands[0]
         band.filterType = .lowPass
-        band.frequency = Float(FilterLayering.closedCutoff)
+        band.frequency = Float(FilterLayering.openCutoff)
         band.bypass = false
         lowPass.bypass = false
     }
@@ -150,11 +159,14 @@ final class FilterLayering: MusicLayering {
     func registerHit(_ color: BeamColor) {}
 
     func registerMiss(_ color: BeamColor) {
+        isRecovering = true
         cutoff.target = Self.closedCutoff
     }
 
     func updateCombo(_ combo: Int) {
+        guard isRecovering else { return }
         let progress = min(Double(combo) / Self.fullyOpenCombo, 1.0)
+        if progress >= 1 { isRecovering = false }
         // Geometric, because pitch and brightness are perceived logarithmically; a linear
         // sweep would spend most of its travel in a range the ear barely distinguishes.
         cutoff.target = Self.closedCutoff * pow(Self.openCutoff / Self.closedCutoff, progress)
@@ -167,7 +179,8 @@ final class FilterLayering: MusicLayering {
     }
 
     func reset() {
-        cutoff.snap(to: Self.closedCutoff)
-        lowPass.bands[0].frequency = Float(Self.closedCutoff)
+        isRecovering = false
+        cutoff.snap(to: Self.openCutoff)
+        lowPass.bands[0].frequency = Float(Self.openCutoff)
     }
 }

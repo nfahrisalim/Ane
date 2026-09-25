@@ -69,10 +69,14 @@ final class AudioEngine: BeatClock {
 
     // MARK: - Setup
 
-    /// Builds the graph and loads or synthesises the stems. Safe to call once per app run.
-    func prepare() async {
+    /// Builds the graph and loads or synthesises `song`'s audio. Call once per engine.
+    ///
+    /// If a bundled file is missing or unreadable the engine falls back to the procedural
+    /// track and reports it through `source`, so the caller can switch to the chart that
+    /// matches what is actually playing instead of judging against the wrong beat grid.
+    func prepare(song: Song) async {
         configureSession()
-        await loadSources()
+        await loadSources(for: song)
         buildGraph()
     }
 
@@ -87,27 +91,35 @@ final class AudioEngine: BeatClock {
         outputLatency = session.outputLatency
     }
 
-    private func loadSources() async {
-        if let loaded = loadStemFiles(), loaded.count == StemKind.allCases.count {
-            files = loaded
-            source = .stems
-            return
+    private func loadSources(for song: Song) async {
+        switch song.audio {
+        case let .stems(prefix):
+            if let loaded = loadStemFiles(prefix: prefix), loaded.count == StemKind.allCases.count {
+                files = loaded
+                source = .stems
+                return
+            }
+        case let .mixed(resource):
+            if let mixed = loadFile(named: resource) {
+                files = [.drums: mixed]
+                source = .mixed
+                return
+            }
+        case .procedural:
+            break
         }
 
-        if let mixed = loadFile(named: "song") {
-            files = [.drums: mixed]
-            source = .mixed
-            return
+        if song.audio != .procedural {
+            logger.error("audio for \(song.id, privacy: .public) is missing; falling back to the procedural track")
         }
-
         source = .procedural
         buffers = await synthesiseStems()
     }
 
-    private func loadStemFiles() -> [StemKind: AVAudioFile]? {
+    private func loadStemFiles(prefix: String) -> [StemKind: AVAudioFile]? {
         var loaded: [StemKind: AVAudioFile] = [:]
         for kind in StemKind.allCases {
-            guard let file = loadFile(named: kind.fileName) else { return nil }
+            guard let file = loadFile(named: "\(prefix)-\(kind.fileName)") else { return nil }
             loaded[kind] = file
         }
         validate(loaded)
@@ -154,12 +166,43 @@ final class AudioEngine: BeatClock {
     }
 
     private func loadFile(named name: String) -> AVAudioFile? {
-        for ext in ["m4a", "caf", "wav", "aif", "aiff", "mp3"] {
-            guard let url = Bundle.main.url(forResource: name, withExtension: ext) else { continue }
-            do {
-                return try AVAudioFile(forReading: url)
-            } catch {
-                logger.error("could not read \(name, privacy: .public).\(ext, privacy: .public)")
+        guard let url = Self.bundledURL(named: name) else { return nil }
+        do {
+            return try AVAudioFile(forReading: url)
+        } catch {
+            logger.error("could not read \(url.lastPathComponent, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Whether `song`'s audio is in the bundle. Checked before a chart is built, so a
+    /// missing file swaps in the procedural song *and its chart* rather than judging a
+    /// 115 BPM chart against a 120 BPM fallback.
+    static func hasAudio(for song: Song) -> Bool {
+        switch song.audio {
+        case .procedural:
+            return true
+        case let .mixed(resource):
+            return bundledURL(named: resource) != nil
+        case let .stems(prefix):
+            return StemKind.allCases.allSatisfy { bundledURL(named: "\(prefix)-\($0.fileName)") != nil }
+        }
+    }
+
+    /// Supported extensions, in order of preference. `.caf` first: the shipped tracks are
+    /// ALAC in CAF, which carries no encoder priming, so beat 0 stays exactly where it was
+    /// measured. AAC in `.m4a` can shift it by a few dozen milliseconds.
+    static let audioExtensions = ["caf", "m4a", "wav", "aif", "aiff", "mp3"]
+
+    /// Finds a bundled audio file. A synchronised folder is flattened into the bundle
+    /// root, but a folder reference would keep `Tracks/`, so both are checked.
+    static func bundledURL(named name: String) -> URL? {
+        for ext in audioExtensions {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
+                return url
+            }
+            if let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "Tracks") {
+                return url
             }
         }
         return nil

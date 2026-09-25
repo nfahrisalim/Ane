@@ -13,3 +13,6 @@ Package.resolved
 
 # macOS
 .DS_Store
+
+# Original music downloads (the app bundles the ALAC re-encodes in Ane/Audio/Tracks)
+MusicSource/

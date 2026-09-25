@@ -10,10 +10,6 @@ import SpriteKit
 @MainActor
 final class GameController {
 
-    /// The chart seed for the one shipped song. Fixed, so every run and every player is
-    /// reading the same track.
-    static let songSeed: UInt64 = 2026_0325
-
     /// A judgment worth announcing on screen, with an identity so the HUD can re-animate
     /// the same verdict twice in a row.
     struct Flash: Equatable {
@@ -30,7 +26,13 @@ final class GameController {
     var flash: Flash?
     var isPaused = false
     var isReady = false
+    /// 0...1 through the song, for the HUD's progress bar. Stepped, not continuous, for
+    /// the same reason as the fields above.
+    var progress: Double = 0
 
+    /// The song actually being played. Differs from the one asked for only when that
+    /// song's audio is missing from the bundle and the procedural track stands in.
+    let song: Song
     let scene: GameScene
     let chart: Chart
 
@@ -41,9 +43,12 @@ final class GameController {
     private var flashTask: Task<Void, Never>?
     private var onFinish: ((RunResult) -> Void)?
 
-    init(seed: UInt64, size: CGSize, haptics: Haptics) {
-        let generator = ChartGenerator()
-        let chart = generator.makeChart(seed: seed)
+    init(song requested: Song, size: CGSize, haptics: Haptics) {
+        // Decide the song before the chart: the chart has to match the audio that will
+        // really play, or every judgment is measured against the wrong beat grid.
+        let song = AudioEngine.hasAudio(for: requested) ? requested : SongCatalog.prismDemo
+        let chart = song.makeChart()
+        self.song = song
         self.chart = chart
         self.haptics = haptics
 
@@ -78,7 +83,7 @@ final class GameController {
 
     func start(onFinish: @escaping (RunResult) -> Void) async {
         self.onFinish = onFinish
-        await audio.prepare()
+        await audio.prepare(song: song)
         audio.start()
         isReady = true
     }
@@ -118,6 +123,11 @@ final class GameController {
         if score != session.score { score = session.score }
         if combo != session.combo { combo = session.combo }
         if multiplier != session.multiplier { multiplier = session.multiplier }
+
+        if let time = session.songTime, chart.duration > 0 {
+            let fraction = min(max(time / chart.duration, 0), 1)
+            if abs(fraction - progress) >= 0.005 || (fraction == 1 && progress != 1) { progress = fraction }
+        }
     }
 
     // MARK: - Events

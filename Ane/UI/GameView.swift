@@ -6,6 +6,7 @@ struct GameView: View {
 
     let appState: AppState
     let haptics: Haptics
+    let song: Song
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var controller: GameController?
@@ -56,18 +57,19 @@ struct GameView: View {
     private func startIfNeeded(size: CGSize) async {
         guard controller == nil, size.width > 0, size.height > 0 else { return }
 
-        // One fixed seed, because the game ships one song. A random chart per run would
-        // make the stored best score meaningless to compare against, and would rob the
-        // player of ever learning the track.
+        // Each song carries its own fixed seed. A random chart per run would make the
+        // stored best score meaningless to compare against, and would rob the player of
+        // ever learning the track.
         let controller = GameController(
-            seed: GameController.songSeed,
+            song: song,
             size: size,
             haptics: haptics
         )
         self.controller = controller
 
+        let played = controller.song
         await controller.start { result in
-            appState.finish(result)
+            appState.finish(result, song: played)
         }
     }
 }

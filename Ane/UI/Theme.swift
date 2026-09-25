@@ -32,6 +32,13 @@ enum Theme {
     static let textPrimary = Color.white
     static let textSecondary = Color.white.opacity(0.55)
 
+    /// System tint for menus: selection, links, toggles. Cyan is the beam colour with the
+    /// highest contrast against the background.
+    static let accent = Color(hex: 0x2EE6FF)
+    /// Raised surfaces in the menus (list rows, cards), one step up from the background.
+    static let surface = Color(hex: 0x17171F)
+    static let surfaceSelected = Color(hex: 0x22222D)
+
     /// Idle alpha of a target that is not currently being asked for.
     static let idleTargetAlpha: CGFloat = 0.35
 

@@ -17,8 +17,31 @@ two targets at once** — the closest two demands are 30° apart, against a 12°
 cannot park the prism. Every note is a real movement. (`LayoutTests` sweeps a full turn to
 prove it.)
 
-What you hear is your score. Drums always play; magenta keeps the bass, cyan the chords,
-amber the lead. Miss a colour and its stem ducks to 15%; hit it again and it fades back.
+What you hear is your score. On the synthesised demo track drums always play; magenta
+keeps the bass, cyan the chords, amber the lead. Miss a colour and its stem ducks to 15%;
+hit it again and it fades back. The bundled disco tracks are single mixes, so there a miss
+muffles the whole song behind a low-pass and six clean hits open it back up.
+
+## Songs
+
+Seven songs, listed easiest first on the song-select screen, each with a preview of its
+chorus:
+
+| Song | Artist | BPM | Difficulty |
+|---|---|---|---|
+| Retro Orbit | Mazarelli | 115 | Easy |
+| Hyperspace Finish | Mazarelli | 115 | Easy |
+| Galaxy Launch | Mazarelli | 115 | Normal |
+| Starlight Arpeggio | Mazarelli | 115 | Normal |
+| Nebula Disco | Mazarelli | 115 | Normal |
+| Solstice Party | gbproductions | 129 | Hard |
+| Prism Groove (demo) | synthesised | 120 | Hard |
+
+Every chart is still generated from a fixed per-song seed, but it now follows the track:
+each four-bar phrase is `sparse` (a note a bar), `half`, `full` or `rest`, read off the
+song's energy. Tempo and beat-0 offset were measured from the audio to the millisecond.
+All of it lives in `Ane/Rhythm/SongCatalog.swift`, and `SongCatalogTests` checks that
+every chart ends inside its file.
 
 ## Running it
 
@@ -36,11 +59,13 @@ them testable on the host machine:
 
 ```
 Ane/
-├─ Rhythm/    AngleMath, Layout, Chart, ChartGenerator, BeatJudge, ScoreKeeper, GameSession
-├─ Audio/     AudioEngine (also the BeatClock), MusicLayering, ProceduralTrack
+├─ Rhythm/    AngleMath, Layout, Chart, ChartGenerator, BeatJudge, ScoreKeeper, GameSession,
+│             Song, SongCatalog
+├─ Audio/     AudioEngine (also the BeatClock), MusicLayering, ProceduralTrack,
+│             TrackPreviewPlayer, Tracks/*.caf
 ├─ Game/      GameScene and its nodes — rendering and input only
 ├─ Feel/      Haptics
-├─ UI/        SwiftUI shell, HUD, title and results
+├─ UI/        SwiftUI shell: title, song select, HUD, results, credits
 └─ App/       Entry point, AppState, GameController
 ```
 
@@ -72,30 +97,23 @@ between stems reads as a flam rather than a chord.
 
 ## Music
 
-There is no music file in the repo. `ProceduralTrack` synthesises four stems — an eight-bar
-120 BPM loop in A minor — into PCM buffers played by real `AVAudioPlayerNode`s.
+Each `Song` names its audio: `.mixed(resource:)` for one bundled file, `.stems(prefix:)`
+for four aligned files named `<prefix>-drums/-bass/-synth/-lead`, or `.procedural` for the
+synthesised loop. Whatever the source, playback goes through real `AVAudioPlayerNode`s, so
+there is **exactly one** clock path.
 
-This is deliberate, and it is a deviation from the build spec, which suggested
-`AVAudioSourceNode` for the placeholder. That node has no `playerTime(forNodeTime:)`, so it
-would have required a second clock implementation that the tested one could not cover.
-Synthesised buffers keep **exactly one** clock path whether the stems are generated or
-loaded from disk.
+The shipped tracks are ALAC in `.caf` (lossless, about 16 MB each). Not AAC: an AAC
+encoder adds priming samples at the start, which would move beat 0 by tens of
+milliseconds against an 80 ms Perfect window.
 
-To swap in real music, check the files first, then drop them into the app target:
+If a song's file is missing from the bundle, `GameController` swaps in the procedural
+song *and its chart* before anything is judged, rather than scoring a 115 BPM chart
+against a 120 BPM fallback.
 
-```bash
-swift Tools/check-stems.swift drums.m4a bass.m4a synth.m4a lead.m4a
-```
-
-`AudioEngine` detects them and uses them with no code change. A single mixed `song.m4a`
-also works and switches the game to `FilterLayering`, where a low-pass opens up with the
-combo instead.
-
-The stems are scheduled on one shared start time and are **never resynchronised**, so they
-have to be the same song cut four ways: identical length, identical sample rate, downbeat
-on sample 0, no fades. A stem that is a little short does not fail loudly — it just drifts
-out of the arrangement while the clock stays perfectly correct. `check-stems.swift` catches
-that on the desk, and `AudioEngine.validate(_:)` logs it at launch if anything slips past.
+The stems path keeps its safety net: stems are scheduled on one shared start time and are
+never resynchronised, so they have to be the same song cut four ways. Check them with
+`swift Tools/check-stems.swift a.m4a b.m4a c.m4a d.m4a`; `AudioEngine.validate(_:)` also
+logs a mismatch at launch.
 
 ## Known limits
 
