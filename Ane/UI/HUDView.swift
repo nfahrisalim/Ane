@@ -23,6 +23,9 @@ struct HUDView: View {
                 pauseOverlay
             }
         }
+        // The HUD shares the screen with the playfield; past this size it would cover
+        // targets the player has to see.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .task {
             guard !appState.hasSeenHint else { return }
             showHint = true
@@ -35,43 +38,61 @@ struct HUDView: View {
     // MARK: - Top bar
 
     private var topBar: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(controller.score, format: .number)
-                .font(.system(size: 26, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText())
-                .animation(.snappy(duration: 0.2), value: controller.score)
-                .foregroundStyle(Theme.textPrimary)
-                .accessibilityLabel("Score")
-
-            // Below 4 the multiplier has not moved yet, so the badge would be noise.
-            if controller.combo >= 4 {
-                Text("×\(controller.multiplier)")
-                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+        VStack(spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                Text(controller.score, format: .number)
+                    .font(.title2.weight(.bold))
                     .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .animation(.snappy(duration: 0.2), value: controller.score)
                     .foregroundStyle(Theme.textPrimary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(Theme.textPrimary.opacity(0.16), in: Capsule())
-                    .transition(.scale.combined(with: .opacity))
-                    .accessibilityLabel("Multiplier \(controller.multiplier) times")
+                    .accessibilityLabel("Score \(controller.score)")
+
+                // Below 4 the multiplier has not moved yet, so the badge would be noise.
+                if controller.combo >= 4 {
+                    Text("×\(controller.multiplier)")
+                        .font(.subheadline.weight(.heavy))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Theme.textPrimary.opacity(0.16), in: Capsule())
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityLabel("Multiplier \(controller.multiplier) times")
+                }
+
+                Spacer(minLength: 8)
+
+                Text(controller.song.title)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+
+                Button {
+                    controller.togglePause()
+                } label: {
+                    Image(systemName: "pause.fill")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(Theme.textPrimary)
+                        // 44 pt: the HIG minimum, and this is hit mid-song with a thumb
+                        // that is busy rotating the prism.
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .glassPanel(cornerRadius: 22)
+                .accessibilityLabel("Pause")
             }
 
-            Spacer()
-
-            Button {
-                controller.togglePause()
-            } label: {
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .frame(width: 38, height: 38)
-            }
-            .glassPanel(cornerRadius: 19)
-            .accessibilityLabel("Pause")
+            ProgressView(value: controller.progress)
+                .progressViewStyle(.linear)
+                .tint(Theme.textPrimary.opacity(0.7))
+                .scaleEffect(x: 1, y: 0.6, anchor: .center)
+                .accessibilityLabel("Song progress")
+                .accessibilityValue("\(Int((controller.progress * 100).rounded())) percent")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
         .glassPanel(cornerRadius: 27)
         .animation(.snappy(duration: 0.25), value: controller.combo >= 4)
     }
@@ -84,7 +105,7 @@ struct HUDView: View {
         ZStack {
             if let flash = controller.flash {
                 Text(flash.judgment == .perfect ? "PERFECT" : "GOOD")
-                    .font(.system(size: 20, weight: .heavy, design: .rounded))
+                    .font(.title3.weight(.heavy))
                     .kerning(1.5)
                     .foregroundStyle(flash.color.color)
                     .shadow(color: flash.color.color.opacity(0.6), radius: 12)
@@ -101,8 +122,8 @@ struct HUDView: View {
     // MARK: - Hint
 
     private var hint: some View {
-        Text("Rotate to match the colour. Hit on the beat.")
-            .font(.system(size: 14, weight: .semibold, design: .rounded))
+        Label("Drag around the prism to rotate. Match the colour on the beat.", systemImage: "hand.draw")
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(Theme.textSecondary)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -116,36 +137,53 @@ struct HUDView: View {
         ZStack {
             Theme.background.opacity(0.72).ignoresSafeArea()
 
-            VStack(spacing: 18) {
-                Text("Paused")
-                    .font(.system(size: 26, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
+            VStack(spacing: 12) {
+                VStack(spacing: 4) {
+                    Text("Paused")
+                        .font(.title.weight(.heavy))
+                        .foregroundStyle(Theme.textPrimary)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(controller.song.title)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .padding(.bottom, 8)
 
                 Button {
                     controller.resume()
                 } label: {
                     Label("Resume", systemImage: "play.fill")
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.background)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(Theme.textPrimary, in: Capsule())
                 }
+                .buttonStyle(.primaryAction)
 
                 Button {
                     controller.stop()
-                    appState.returnToTitle()
+                    appState.play(controller.song)
                 } label: {
-                    Text("Quit to title")
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
+                    Label("Restart", systemImage: "arrow.counterclockwise")
                 }
+                .buttonStyle(.secondaryAction)
+
+                Button {
+                    controller.stop()
+                    appState.returnToSongs()
+                } label: {
+                    Text("Quit to Songs")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            .padding(26)
-            .frame(maxWidth: 320)
-            .glassPanel(cornerRadius: 26)
-            .padding(.horizontal, 32)
+            .padding(24)
+            .frame(maxWidth: 340)
+            .glassPanel(cornerRadius: 28)
+            .padding(.horizontal, 28)
         }
         .transition(.opacity)
+        // Resume is the expected answer; make it the one VoiceOver lands on and the one a
+        // hardware keyboard's Escape toggles.
+        .accessibilityAction(.escape) { controller.resume() }
     }
 }

@@ -5,12 +5,12 @@ struct TitleView: View {
     let appState: AppState
 
     @State private var emblemAngle: Double = 0
-
-    private var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
+    @State private var showsCredits = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
-            Spacer()
+            Spacer(minLength: 24)
 
             PrismEmblem(angle: emblemAngle)
                 .frame(width: 190, height: 190)
@@ -19,42 +19,57 @@ struct TitleView: View {
             Spacer().frame(height: 44)
 
             Text("PRISM GROOVE")
-                .font(.system(size: 38, weight: .heavy, design: .rounded))
+                .font(.largeTitle.weight(.heavy))
                 .kerning(2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(Theme.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityLabel("Prism Groove")
 
             Text("Bend light into colour. Colour into song.")
-                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.top, 10)
                 .multilineTextAlignment(.center)
 
-            Spacer()
+            Spacer(minLength: 24)
 
             Button {
-                appState.play()
+                appState.menuPath.append(.songs)
             } label: {
                 Label("Play", systemImage: "play.fill")
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.background)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 17)
-                    .background(Theme.textPrimary, in: Capsule())
             }
-            .accessibilityHint("Starts a two minute song")
+            .buttonStyle(.primaryAction)
+            .accessibilityHint("Choose a song to play")
 
-            if appState.bestScore > 0 {
-                Text("Best \(appState.bestScore.formatted())")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.top, 18)
-            }
+            Text("\(SongCatalog.all.count) songs")
+                .font(.footnote.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.top, 14)
 
-            Spacer().frame(height: 28)
+            Spacer().frame(height: 20)
         }
         .padding(.horizontal, 32)
-        .task {
+        .frame(maxWidth: 520)
+        .frame(maxWidth: .infinity)
+        .background(Theme.background.ignoresSafeArea())
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showsCredits = true
+                } label: {
+                    Label("Credits", systemImage: "info.circle")
+                }
+                .tint(Theme.textPrimary)
+            }
+        }
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showsCredits) {
+            CreditsView()
+        }
+        .task(id: reduceMotion) {
             guard !reduceMotion else { return }
             // A slow idle turn, so the emblem reads as the thing you are about to rotate.
             withAnimation(.linear(duration: 24).repeatForever(autoreverses: false)) {
@@ -121,12 +136,10 @@ private struct Triangle: Shape {
     }
 }
 
-#Preview("Fresh install") {
-    TitleView(appState: AppState(defaults: UserDefaults(suiteName: "PrismGroove.freshPreview") ?? .standard))
-        .background(Theme.background)
-}
-
-#Preview("With a best score") {
-    TitleView(appState: AppState(defaults: .previewDefaults))
-        .background(Theme.background)
+#Preview {
+    NavigationStack {
+        TitleView(appState: AppState(defaults: .previewDefaults))
+    }
+    .fontDesign(.rounded)
+    .preferredColorScheme(.dark)
 }

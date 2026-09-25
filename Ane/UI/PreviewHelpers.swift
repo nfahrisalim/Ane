@@ -4,7 +4,8 @@ extension UserDefaults {
     /// Isolated defaults so previews never read or clobber a real best score.
     static let previewDefaults: UserDefaults = {
         let defaults = UserDefaults(suiteName: "PrismGroove.previews") ?? .standard
-        defaults.set(48_600, forKey: "bestScore")
+        defaults.set(48_600, forKey: "bestScore.galaxy-launch")
+        defaults.set(21_300, forKey: "bestScore.retro-orbit")
         defaults.set(true, forKey: "hasSeenHint")
         return defaults
     }()
